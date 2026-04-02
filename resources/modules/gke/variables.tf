@@ -30,3 +30,13 @@ variable "region" {
   description = "The region where resources will be created"
   type        = string
 }
+
+variable "grafana_db_name" {
+  description = "Grafana Postgres DB Name"
+  type        = string
+}
+
+variable "grafana_db_password" {
+  description = "Grafana Postgres DB Password"
+  type        = string
+}

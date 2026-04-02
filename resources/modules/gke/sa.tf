@@ -37,3 +37,30 @@ resource "google_service_account_iam_binding" "prom_ui_wi_binding" {
     "serviceAccount:${var.project_id}.svc.id.goog[monitoring/prom-ui-ksa]"
   ]
 }
+
+resource "google_service_account" "grafana_gsa" {
+  account_id   = "grafana-gcp-sa"
+  display_name = "GSA for Grafana (Cloud SQL & GMP Access)"
+}
+
+# Grant access to Cloud SQL (for the sidecar proxy)
+resource "google_project_iam_member" "grafana_sql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.grafana_gsa.email}"
+}
+
+# Grant access to Google Managed Prometheus (so Grafana can query your metrics)
+resource "google_project_iam_member" "grafana_metric_viewer" {
+  project = var.project_id
+  role    = "roles/monitoring.viewer"
+  member  = "serviceAccount:${google_service_account.grafana_gsa.email}"
+}
+
+resource "google_service_account_iam_binding" "grafana_wi_binding" {
+  service_account_id = google_service_account.grafana_gsa.name
+  role               = "roles/iam.workloadIdentityUser"
+  members = [
+    "serviceAccount:${var.project_id}.svc.id.goog[monitoring/grafana-ksa]"
+  ]
+}

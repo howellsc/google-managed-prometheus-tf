@@ -22,6 +22,13 @@ resource "google_storage_bucket" "external_state" {
   uniform_bucket_level_access = true
 }
 
+module "cloud_sql" {
+  source   = "./modules/cloud/sql"
+  name     = var.name
+  region   = var.region
+  vpc_name = module.vpc_network.vpc_name
+}
+
 module "vpc_network" {
   source = "./modules/vpc"
   region = var.region
@@ -36,4 +43,6 @@ module "gke" {
   vpc_name                          = module.vpc_network.vpc_name
   vpc_subnet_gke_name               = module.vpc_network.vpc_subnet_gke_name
   vpc_subnet_gke_secondary_ip_range = module.vpc_network.vpc_subnet_gke_secondary_ip_range
+  grafana_db_name                   = module.cloud_sql.grafana_db_name
+  grafana_db_password               = module.cloud_sql.grafana_db_password
 }

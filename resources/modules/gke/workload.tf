@@ -11,7 +11,7 @@ provider "kubernetes" {
   ]
 }
 
-resource "kubernetes_namespace_v1" "prometheus_ui_namespace" {
+resource "kubernetes_namespace_v1" "observability_namespace" {
   metadata {
     name = "${var.name}-namespace"
   }
@@ -21,7 +21,7 @@ resource "kubernetes_namespace_v1" "prometheus_ui_namespace" {
 resource "kubernetes_service_account_v1" "otel_ksa" {
   metadata {
     name      = "otel-collector-ksa"
-    namespace = kubernetes_namespace_v1.prometheus_ui_namespace.metadata[0].name
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
     annotations = {
       "iam.gke.io/gcp-service-account" = google_service_account.otel_gsa.email
     }
@@ -31,7 +31,7 @@ resource "kubernetes_service_account_v1" "otel_ksa" {
 resource "kubernetes_service_account_v1" "prom_ui_ksa" {
   metadata {
     name      = "prom-ui-ksa"
-    namespace = kubernetes_namespace_v1.prometheus_ui_namespace.metadata[0].name
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
     annotations = {
       "iam.gke.io/gcp-service-account" = google_service_account.prom_ui_gsa.email
     }
@@ -42,7 +42,7 @@ resource "kubernetes_service_account_v1" "prom_ui_ksa" {
 resource "kubernetes_config_map_v1" "otel_config" {
   metadata {
     name      = "otel-collector-config"
-    namespace = kubernetes_namespace_v1.prometheus_ui_namespace.metadata[0].name
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
   data = {
     "config.yaml" = <<EOF
@@ -77,7 +77,7 @@ EOF
 resource "kubernetes_deployment_v1" "otel_collector" {
   metadata {
     name      = "otel-collector"
-    namespace = kubernetes_namespace_v1.prometheus_ui_namespace.metadata[0].name
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
   spec {
     replicas = 1
@@ -118,7 +118,7 @@ resource "kubernetes_deployment_v1" "otel_collector" {
 resource "kubernetes_deployment_v1" "prometheus_ui_deployment" {
   metadata {
     name      = "app-prometheus-ui"
-    namespace = kubernetes_namespace_v1.prometheus_ui_namespace.metadata[0].name
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
 
   spec {
@@ -178,7 +178,7 @@ resource "kubernetes_deployment_v1" "prometheus_ui_deployment" {
 resource "kubernetes_service_v1" "prom_ui_service" {
   metadata {
     name      = "prometheus-ui-service"
-    namespace = kubernetes_namespace_v1.prometheus_ui_namespace.metadata[0].name
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
     annotations = {
       "networking.gke.io/load-balancer-type" = "Internal" # Remove to create an external loadbalancer
     }
@@ -196,6 +196,120 @@ resource "kubernetes_service_v1" "prom_ui_service" {
 
   depends_on = [time_sleep.wait_service_cleanup]
 
+}
+
+resource "kubernetes_service_account" "grafana_ksa" {
+  metadata {
+    name      = "grafana-ksa"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+    annotations = {
+      "iam.gke.io/gcp-service-account" = google_service_account.grafana_gsa.email
+    }
+  }
+}
+
+resource "kubernetes_deployment_v1" "grafana" {
+  metadata {
+    name      = "grafana"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+  spec {
+    replicas = 2 # <--- Grafana HA (2 pods) enabled because of external DB!
+    selector {
+      match_labels = {
+        app = "grafana"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app = "grafana"
+        }
+      }
+      spec {
+        service_account_name = kubernetes_service_account.grafana_ksa.metadata[0].name
+
+        # Container 1: The Grafana Application
+        container {
+          name  = "grafana"
+          image = "grafana/grafana:latest"
+          port {
+            container_port = 3000
+          }
+          # Point Grafana to the localhost proxy
+          env {
+            name  = "GF_DATABASE_TYPE"
+            value = "postgres"
+          }
+          env {
+            name  = "GF_DATABASE_HOST"
+            value = "127.0.0.1:5432"
+          }
+          env {
+            name  = "GF_DATABASE_NAME"
+            value = "grafana"
+          }
+          env {
+            name  = "GF_DATABASE_USER"
+            value = "grafana"
+          }
+          env {
+            name = "GF_DATABASE_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.grafana_db_credentials.metadata[0].name
+                key  = "password"
+              }
+            }
+          }
+        }
+
+        # Container 2: Cloud SQL Auth Proxy Sidecar
+        container {
+          name  = "cloud-sql-proxy"
+          image = "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.11.0"
+          # Run proxy to connect to our specific DB over Private IP
+          args = [
+            "--private-ip",
+            "${var.project_id}:${var.region}:${var.grafana_db_name}"
+          ]
+          security_context {
+            run_as_non_root = true
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service_v1" "grafana_service" {
+  metadata {
+    name      = "grafana-service"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+  spec {
+    selector = {
+      app = "grafana"
+    }
+    port {
+      port        = 80
+      target_port = 3000
+    }
+    type = "ClusterIP"
+  }
+
+  depends_on = [time_sleep.wait_service_cleanup]
+}
+
+# Store the generated DB password securely in K8s
+resource "kubernetes_secret_v1" "grafana_db_credentials" {
+  metadata {
+    name      = "grafana-db-credentials"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+  data = {
+    password = var.grafana_db_password
+  }
 }
 
 # Provide time for Service cleanup
