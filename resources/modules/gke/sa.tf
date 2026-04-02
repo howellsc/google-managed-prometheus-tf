@@ -13,7 +13,7 @@ resource "google_project_iam_member" "otel_gsa_metric_writer" {
 resource "google_service_account_iam_binding" "otel_wi_binding" {
   service_account_id = google_service_account.otel_gsa.name
   role               = "roles/iam.workloadIdentityUser"
-  members =[
+  members = [
     "serviceAccount:${var.project_id}.svc.id.goog[monitoring/otel-collector-ksa]"
   ]
 }
@@ -33,7 +33,7 @@ resource "google_project_iam_member" "prom_ui_viewer" {
 resource "google_service_account_iam_binding" "prom_ui_wi_binding" {
   service_account_id = google_service_account.prom_ui_gsa.name
   role               = "roles/iam.workloadIdentityUser"
-  members =[
+  members = [
     "serviceAccount:${var.project_id}.svc.id.goog[monitoring/prom-ui-ksa]"
   ]
 }
