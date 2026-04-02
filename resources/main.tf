@@ -23,10 +23,11 @@ resource "google_storage_bucket" "external_state" {
 }
 
 module "cloud_sql" {
-  source   = "./modules/cloud/sql"
-  name     = var.name
-  region   = var.region
-  vpc_name = module.vpc_network.vpc_name
+  source                    = "./modules/cloud/sql"
+  name                      = var.name
+  region                    = var.region
+  vpc_name                  = module.vpc_network.vpc_name
+  private_vpc_connection_id = module.vpc_network.private_vpc_connection_id
 }
 
 module "vpc_network" {

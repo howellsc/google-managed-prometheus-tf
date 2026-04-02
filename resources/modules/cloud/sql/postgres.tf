@@ -7,7 +7,7 @@ resource "google_sql_database_instance" "grafana_db" {
   region           = var.region
 
   # Ensure VPC peering completes before creating the DB
-  depends_on = [google_service_networking_connection.private_vpc_connection]
+  depends_on = [var.private_vpc_connection_id]
 
   settings {
     tier              = "db-custom-2-7680" # 2 vCPU, 7.5GB RAM

@@ -12,3 +12,8 @@ variable "region" {
   description = "The region where resources will be created"
   type        = string
 }
+
+variable "private_vpc_connection_id" {
+  description = "Private VPC Connection ID"
+  type        = string
+}
