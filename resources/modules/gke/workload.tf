@@ -137,7 +137,7 @@ resource "kubernetes_deployment_v1" "prometheus_ui_deployment" {
 
       spec {
         container {
-          image: "gke.gcr.io/prometheus-engine/frontend:v0.15.3-gke.0"
+          image = "gke.gcr.io/prometheus-engine/frontend:v0.15.3-gke.0"
           name  = "frontend"
 
           args = ["--query.project-id=${var.project_id}"]
