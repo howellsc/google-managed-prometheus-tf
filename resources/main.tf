@@ -46,4 +46,5 @@ module "gke" {
   vpc_subnet_gke_secondary_ip_range = module.vpc_network.vpc_subnet_gke_secondary_ip_range
   grafana_db_name                   = module.cloud_sql.grafana_db_name
   grafana_db_password               = module.cloud_sql.grafana_db_password
+  grafana_db_admin_password         = module.cloud_sql.grafana_db_admin_password
 }

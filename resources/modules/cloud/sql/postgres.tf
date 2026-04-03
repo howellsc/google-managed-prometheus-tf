@@ -2,7 +2,7 @@
 # 7. CLOUD SQL POSTGRES HA (Grafana Backend)
 # ==============================================================================
 resource "google_sql_database_instance" "grafana_db" {
-  name             = "grafana-ha-postgres"
+  name             = "${var.name}-grafana-ha-postgres"
   database_version = "POSTGRES_15"
   region           = var.region
 
@@ -22,7 +22,7 @@ resource "google_sql_database_instance" "grafana_db" {
 }
 
 resource "google_sql_database" "grafana" {
-  name     = "grafana"
+  name     = "${var.name}-grafana"
   instance = google_sql_database_instance.grafana_db.name
 }
 
@@ -35,4 +35,15 @@ resource "google_sql_user" "grafana_user" {
   name     = "grafana"
   instance = google_sql_database_instance.grafana_db.name
   password = random_password.grafana_db_password.result
+}
+
+resource "random_password" "postgres_admin_password" {
+  length  = 16
+  special = false
+}
+
+resource "google_sql_user" "postgres_admin" {
+  name     = "postgres"
+  instance = google_sql_database_instance.grafana_db.name
+  password = random_password.postgres_admin_password.result
 }

@@ -40,3 +40,8 @@ variable "grafana_db_password" {
   description = "Grafana Postgres DB Password"
   type        = string
 }
+
+variable "grafana_db_admin_password" {
+  description = "Grafana Postgres DB Admin Password"
+  type        = string
+}

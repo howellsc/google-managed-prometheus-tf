@@ -20,7 +20,7 @@ resource "kubernetes_namespace_v1" "observability_namespace" {
 # -- Kubernetes Service Accounts (KSAs) --
 resource "kubernetes_service_account_v1" "otel_ksa" {
   metadata {
-    name      = "otel-collector-ksa"
+    name      = "${var.name}-otel-collector-ksa"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
     annotations = {
       "iam.gke.io/gcp-service-account" = google_service_account.otel_gsa.email
@@ -30,7 +30,7 @@ resource "kubernetes_service_account_v1" "otel_ksa" {
 
 resource "kubernetes_service_account_v1" "prom_ui_ksa" {
   metadata {
-    name      = "prom-ui-ksa"
+    name      = "${var.name}-prom-ui-ksa"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
     annotations = {
       "iam.gke.io/gcp-service-account" = google_service_account.prom_ui_gsa.email
@@ -41,7 +41,7 @@ resource "kubernetes_service_account_v1" "prom_ui_ksa" {
 # -- OTel Collector Deployment & Config --
 resource "kubernetes_config_map_v1" "otel_config" {
   metadata {
-    name      = "otel-collector-config"
+    name      = "${var.name}-otel-collector-config"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
   data = {
@@ -76,7 +76,7 @@ EOF
 
 resource "kubernetes_deployment_v1" "otel_collector" {
   metadata {
-    name      = "otel-collector"
+    name      = "${var.name}-otel-collector"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
   spec {
@@ -117,28 +117,28 @@ resource "kubernetes_deployment_v1" "otel_collector" {
 
 resource "kubernetes_deployment_v1" "prometheus_ui_deployment" {
   metadata {
-    name      = "app-prometheus-ui"
+    name      = "${var.name}-app-prometheus-ui"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
 
   spec {
     selector {
       match_labels = {
-        app = "app-prometheus-ui"
+        app = "${var.name}-app-prometheus-ui"
       }
     }
 
     template {
       metadata {
         labels = {
-          app = "app-prometheus-ui"
+          app = "${var.name}-app-prometheus-ui"
         }
       }
 
       spec {
         container {
           image = "gke.gcr.io/prometheus-engine/frontend:v0.15.3-gke.0"
-          name  = "frontend"
+          name  = "${var.name}-frontend"
 
           args = ["--query.project-id=${var.project_id}"]
           port {
@@ -177,7 +177,7 @@ resource "kubernetes_deployment_v1" "prometheus_ui_deployment" {
 
 resource "kubernetes_service_v1" "prom_ui_service" {
   metadata {
-    name      = "prometheus-ui-service"
+    name      = "${var.name}-prometheus-ui-service"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
     annotations = {
       "networking.gke.io/load-balancer-type" = "Internal" # Remove to create an external loadbalancer
@@ -198,9 +198,9 @@ resource "kubernetes_service_v1" "prom_ui_service" {
 
 }
 
-resource "kubernetes_service_account" "grafana_ksa" {
+resource "kubernetes_service_account_v1" "grafana_ksa" {
   metadata {
-    name      = "grafana-ksa"
+    name      = "${var.name}-grafana-ksa"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
     annotations = {
       "iam.gke.io/gcp-service-account" = google_service_account.grafana_gsa.email
@@ -210,28 +210,28 @@ resource "kubernetes_service_account" "grafana_ksa" {
 
 resource "kubernetes_deployment_v1" "grafana" {
   metadata {
-    name      = "grafana"
+    name      = "${var.name}-grafana"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
   spec {
     replicas = 2 # <--- Grafana HA (2 pods) enabled because of external DB!
     selector {
       match_labels = {
-        app = "grafana"
+        app = "${var.name}-grafana"
       }
     }
     template {
       metadata {
         labels = {
-          app = "grafana"
+          app = "${var.name}-grafana"
         }
       }
       spec {
-        service_account_name = kubernetes_service_account.grafana_ksa.metadata[0].name
+        service_account_name = kubernetes_service_account_v1.grafana_ksa.metadata[0].name
 
         # Container 1: The Grafana Application
         container {
-          name  = "grafana"
+          name  = "${var.name}-grafana"
           image = "grafana/grafana:latest"
           port {
             container_port = 3000
@@ -284,7 +284,7 @@ resource "kubernetes_deployment_v1" "grafana" {
 
 resource "kubernetes_service_v1" "grafana_service" {
   metadata {
-    name      = "grafana-service"
+    name      = "${var.name}-grafana-service"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
   spec {
@@ -304,13 +304,101 @@ resource "kubernetes_service_v1" "grafana_service" {
 # Store the generated DB password securely in K8s
 resource "kubernetes_secret_v1" "grafana_db_credentials" {
   metadata {
-    name      = "grafana-db-credentials"
+    name      = "${var.name}-grafana-db-credentials"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
   data = {
     password = var.grafana_db_password
   }
 }
+
+# 2. Store the admin password in K8s Secret
+resource "kubernetes_secret_v1" "postgres_admin_credentials" {
+  metadata {
+    name      = "${var.name}-postgres-admin-credentials"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+  data = {
+    password = var.grafana_db_admin_password
+  }
+}
+
+# 3. Deploy a one-time Kubernetes Job to run the internal SQL Grants
+resource "kubernetes_job_v1" "grafana_db_permissions" {
+  metadata {
+    name      = "${var.name}-grafana-db-permissions"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+  spec {
+    template {
+      metadata {
+        labels = {
+          app = "${var.name}-grafana-db-permissions"
+        }
+      }
+      spec {
+        restart_policy = "Never"
+
+        # We reuse the Grafana KSA because it already has Workload Identity
+        # and the "roles/cloudsql.client" IAM role needed by the proxy.
+        service_account_name = kubernetes_service_account_v1.grafana_ksa.metadata[0].name
+
+        container {
+          name = "psql-proxy-runner"
+          # Use the Postgres Alpine image so we have access to both 'psql' and 'wget'
+          image = "postgres:15-alpine"
+
+          env {
+            name = "POSTGRES_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.postgres_admin_credentials.metadata[0].name
+                key  = "password"
+              }
+            }
+          }
+
+          command = ["/bin/sh", "-c"]
+
+          # Single-container execution script: runs the proxy in the background,
+          # executes the grants, and kills the proxy so the K8s Job completes successfully.
+          args = [
+            <<-EOT
+            echo "Downloading Cloud SQL Proxy..."
+            wget -q https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.11.0/cloud-sql-proxy.linux.amd64 -O cloud-sql-proxy
+            chmod +x cloud-sql-proxy
+
+            echo "Starting Cloud SQL Proxy in the background..."
+            ./cloud-sql-proxy --private-ip ${var.project_id}:${var.region}:${var.grafana_db_name} &
+            PROXY_PID=$!
+
+            echo "Waiting 10 seconds for proxy tunnel to establish..."
+            sleep 10
+
+            echo "Executing internal PostgreSQL permission grants..."
+            PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -U postgres -d grafana -c "
+            ALTER DATABASE grafana OWNER TO grafana;
+            GRANT CREATE ON DATABASE grafana TO grafana;
+            GRANT ALL ON SCHEMA public TO grafana;
+            "
+
+            echo "Grants applied successfully. Terminating proxy..."
+            kill $PROXY_PID
+            EOT
+          ]
+        }
+      }
+    }
+  }
+
+  # # Ensure the Job only runs AFTER the database and users actually exist
+  # depends_on =[
+  #   google_sql_database.grafana,
+  #   var.,
+  #   google_sql_user.postgres_admin
+  # ]
+}
+
 
 # Provide time for Service cleanup
 resource "time_sleep" "wait_service_cleanup" {

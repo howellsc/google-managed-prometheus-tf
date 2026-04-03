@@ -5,3 +5,7 @@ output "grafana_db_name" {
 output "grafana_db_password" {
   value = random_password.grafana_db_password.result
 }
+
+output "grafana_db_admin_password" {
+  value = random_password.postgres_admin_password.result
+}
