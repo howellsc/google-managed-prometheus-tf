@@ -34,14 +34,17 @@ variable "region" {
 variable "grafana_db_name" {
   description = "Grafana Postgres DB Name"
   type        = string
+  default     = ""
 }
 
 variable "grafana_db_password" {
   description = "Grafana Postgres DB Password"
   type        = string
+  default     = ""
 }
 
 variable "grafana_db_admin_password" {
   description = "Grafana Postgres DB Admin Password"
   type        = string
+  default     = ""
 }

@@ -19,6 +19,7 @@ resource "google_sql_database_instance" "grafana_db" {
       enable_private_path_for_google_cloud_services = true
     }
   }
+  deletion_protection = false
 }
 
 resource "google_sql_database" "grafana" {
