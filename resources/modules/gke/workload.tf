@@ -296,7 +296,7 @@ resource "kubernetes_service_v1" "grafana_service" {
     }
     port {
       port        = 80
-      arget_port = kubernetes_deployment_v1.grafana.spec[0].template[0].spec[0].container[0].port[0].name
+      target_port = kubernetes_deployment_v1.grafana.spec[0].template[0].spec[0].container[0].port[0].name
     }
   }
 
