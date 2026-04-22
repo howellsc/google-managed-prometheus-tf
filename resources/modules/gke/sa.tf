@@ -13,13 +13,13 @@ resource "google_project_iam_member" "otel_gsa_metric_writer" {
 resource "google_service_account_iam_member" "otel_wi_binding" {
   service_account_id = google_service_account.otel_gsa.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/otel-collector-ksa]"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/${var.name}-otel-collector-ksa]"
 }
 
 resource "google_service_account_iam_member" "otel_token_creator" {
   service_account_id = google_service_account.otel_gsa.name
   role               = "roles/iam.serviceAccountTokenCreator"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/otel-collector-ksa]"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/${var.name}-otel-collector-ksa]"
 }
 
 # -- Prometheus UI Proxy (Metric Viewer) --
@@ -38,7 +38,7 @@ resource "google_service_account_iam_binding" "prom_ui_wi_binding" {
   service_account_id = google_service_account.prom_ui_gsa.name
   role               = "roles/iam.workloadIdentityUser"
   members = [
-    "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/prom-ui-ksa]"
+    "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/${var.name}-prom-ui-ksa]"
   ]
 }
 
@@ -64,11 +64,11 @@ resource "google_project_iam_member" "grafana_metric_viewer" {
 resource "google_service_account_iam_member" "grafana_workload_identity" {
   service_account_id = google_service_account.grafana_gsa.name
   role               = "roles/iam.workloadIdentityUser"
-  member = "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/grafana-ksa]"
+  member = "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/${var.name}-grafana-ksa]"
 }
 
 resource "google_service_account_iam_member" "grafana_token_creator" {
   service_account_id = google_service_account.otel_gsa.name
   role               = "roles/iam.serviceAccountTokenCreator"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/grafana-ksa]"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/${var.name}-grafana-ksa]"
 }
