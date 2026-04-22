@@ -195,7 +195,6 @@ resource "kubernetes_service_v1" "prom_ui_service" {
   }
 
   depends_on = [time_sleep.wait_service_cleanup]
-
 }
 
 resource "kubernetes_service_account_v1" "grafana_ksa" {
@@ -286,16 +285,19 @@ resource "kubernetes_service_v1" "grafana_service" {
   metadata {
     name      = "${var.name}-grafana-service"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+    annotations = {
+      "networking.gke.io/load-balancer-type" = "Internal" # Remove to create an external loadbalancer
+    }
   }
   spec {
+    type = "LoadBalancer"
     selector = {
-      app = "grafana"
+      app = kubernetes_deployment_v1.grafana.spec[0].selector[0].match_labels.app
     }
     port {
       port        = 80
-      target_port = 3000
+      arget_port = kubernetes_deployment_v1.grafana.spec[0].template[0].spec[0].container[0].port[0].name
     }
-    type = "ClusterIP"
   }
 
   depends_on = [time_sleep.wait_service_cleanup]
