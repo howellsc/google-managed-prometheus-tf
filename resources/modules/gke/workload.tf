@@ -140,7 +140,7 @@ resource "kubernetes_deployment_v1" "prometheus_ui_deployment" {
           image = "gke.gcr.io/prometheus-engine/frontend:v0.15.3-gke.0"
           name  = "${var.name}-frontend"
 
-          args = ["--query.project-id=${var.project_id}"]
+          args = ["--query.project-id=${var.project_id}","--web.listen-address=:9090"]
           port {
             container_port = 9090
             name           = "web"
