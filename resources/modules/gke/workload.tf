@@ -296,7 +296,7 @@ resource "kubernetes_service_v1" "grafana_service" {
       app = kubernetes_deployment_v1.grafana.spec[0].selector[0].match_labels.app
     }
     port {
-      port        = 80
+      port        = 8080
       target_port = kubernetes_deployment_v1.grafana.spec[0].template[0].spec[0].container[0].port[0].name
     }
   }
