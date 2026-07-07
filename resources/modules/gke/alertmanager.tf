@@ -89,9 +89,9 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
             "--config.file=/etc/alertmanager/alertmanager.yml",
             "--storage.path=/alertmanager",
             # 2. Point to the headless service DNS pattern to find cluster siblings
-            "--cluster.peer=alertmanager-0.alertmanager.monitoring.svc.cluster.local:9094",
-            "--cluster.peer=alertmanager-1.alertmanager.monitoring.svc.cluster.local:9094",
-            "--cluster.peer=alertmanager-2.alertmanager.monitoring.svc.cluster.local:9094"
+            "--cluster.peer=alertmanager-0.alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094",
+            "--cluster.peer=alertmanager-1.alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094",
+            "--cluster.peer=alertmanager-2.alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094"
           ]
 
           port {
@@ -126,6 +126,22 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
           }
         }
 
+        container {
+          name = "${var.name}-config-reloader"
+          image = "gke.gcr.io/prometheus-engine/config-reloader:v0.17.2-gke.2"
+
+          args = [
+            "-watched-dir=/etc/alertmanager",
+            "-reload-url=http://127.0.0.1:9093/-/reload",
+            "-ready-url=http://127.0.0.1:9093/-/ready"
+          ]
+
+          volume_mount {
+            name       = "config-volume"
+            mount_path = "/etc/alertmanager"
+          }
+        }
+
         volume {
           name = "config-volume"
           config_map {
@@ -133,6 +149,7 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
           }
         }
       }
+
     }
 
     # Dynamically spins up dedicated persistent cloud disks per Pod replica
@@ -145,7 +162,7 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
         storage_class_name = "standard-rwo" # Adjust to match your cloud's block storage class (e.g., premium-rwo)
         resources {
           requests = {
-            storage = "16Mb"
+            storage = "16m"
           }
         }
       }
@@ -164,7 +181,34 @@ resource "kubernetes_service_account_v1" "gmp_rule_evaluator_ksa" {
   }
 }
 
-# 3. ConfigMap containing your raw Prometheus rules file
+
+# 3. ConfigMap containing your raw Prometheus config
+resource "kubernetes_config_map_v1" "gmp_rule_evaluator_config" {
+  metadata {
+    name      = "rule-evaluator-prometheus-yaml"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+
+  data = {
+    "prometheus.yaml" = <<EOF
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/rules/*.yaml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9093
+EOF
+  }
+}
+
+
+# ConfigMap containing your raw Prometheus rules file
 resource "kubernetes_config_map_v1" "gmp_rule_evaluator_rules" {
   metadata {
     name      = "rule-evaluator-rules"
@@ -181,6 +225,13 @@ groups:
         for: 2m
         labels:
           severity: warning
+      - alert: TestAlert
+        expr: vector(1)
+        for: 30s
+        labels:
+          severity: warning
+          test: true
+          name: chris
 EOF
   }
 }
@@ -216,16 +267,19 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
           image = "gke.gcr.io/prometheus-engine/rule-evaluator:v0.17.2-gke.2"
 
           args = [
-            "--project-id=YOUR_GCP_PROJECT_ID",
-            "--rules=/etc/rules/rules.yaml",
-            # Point this directly to your Alertmanager service address
-            "--alertmanager.notification-queue-capacity=10000",
-            "--alertmanager.url=http://alertmanager.monitoring.svc.cluster.local:9093"
+            "--query.project-id=${var.project_id}",
+            "--config.file=/etc/config/prometheus.yaml",
+            "--log.level=debug"
           ]
 
           volume_mount {
             name       = "rules-volume"
             mount_path = "/etc/rules"
+          }
+
+          volume_mount {
+            name       = "config-volume"
+            mount_path = "/etc/config"
           }
 
           resources {
@@ -240,10 +294,39 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
           }
         }
 
+        container {
+          name = "${var.name}-config-reloader"
+          image = "gke.gcr.io/prometheus-engine/config-reloader:v0.17.2-gke.2"
+
+          args = [
+            "-watched-dir=/etc/rules",
+            # "-config-dir=/etc/config/prometheus.yaml",
+            "-reload-url=http://127.0.0.1:9091/-/reload",
+            "-ready-url=http://127.0.0.1:9091/-/ready"
+          ]
+
+          volume_mount {
+            name       = "rules-volume"
+            mount_path = "/etc/rules"
+          }
+
+          volume_mount {
+            name       = "config-volume"
+            mount_path = "/etc/config"
+          }
+        }
+
         volume {
           name = "rules-volume"
           config_map {
             name = kubernetes_config_map_v1.gmp_rule_evaluator_rules.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "config-volume"
+          config_map {
+            name = kubernetes_config_map_v1.gmp_rule_evaluator_config.metadata[0].name
           }
         }
       }

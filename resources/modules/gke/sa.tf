@@ -83,6 +83,13 @@ resource "google_project_iam_member" "rule_evaluator_metric_viewer" {
   member  = "serviceAccount:${google_service_account.rule_evaluator_gsa.email}"
 }
 
+# 1. IAM Binding to allow your cluster's Service Account to read GMP data
+resource "google_project_iam_member" "rule_evaluator_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.rule_evaluator_gsa.email}"
+}
+
 resource "google_service_account_iam_binding" "rule_evaluator_wi_binding" {
   service_account_id = google_service_account.rule_evaluator_gsa.name
   role               = "roles/iam.workloadIdentityUser"
