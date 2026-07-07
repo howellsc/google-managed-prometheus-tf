@@ -14,27 +14,33 @@ resource "google_service_account_iam_binding" "otel_wi_binding" {
   service_account_id = google_service_account.otel_gsa.name
   role               = "roles/iam.workloadIdentityUser"
   members = [
-    "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/otel-collector-ksa]"
+    "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/${var.name}-otel-collector-ksa]"
   ]
 }
 
-# -- Prometheus UI Proxy (Metric Viewer) --
-resource "google_service_account" "prom_ui_gsa" {
-  account_id   = "${var.name}-prom-ui-gcp-sa"
-  display_name = "GSA for Prom UI reading from GMP"
+# -- GMP Datasource Sync --
+resource "google_service_account" "gmp_datasource_syncer_gsa" {
+  account_id   = "${var.name}-gmp-datasource-syncer-sa"
+  display_name = "GSA for GMP Datasource Syncher"
 }
 
-resource "google_project_iam_member" "prom_ui_viewer" {
+resource "google_project_iam_member" "gmp_datasource_syncer_viewer" {
   project = var.project_id
   role    = "roles/monitoring.viewer"
-  member  = "serviceAccount:${google_service_account.prom_ui_gsa.email}"
+  member  = "serviceAccount:${google_service_account.gmp_datasource_syncer_gsa.email}"
 }
 
-resource "google_service_account_iam_binding" "prom_ui_wi_binding" {
-  service_account_id = google_service_account.prom_ui_gsa.name
+resource "google_project_iam_member" "gmp_datasource_syncer_token_creator" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:${google_service_account.gmp_datasource_syncer_gsa.email}"
+}
+
+resource "google_service_account_iam_binding" "gmp_datasource_syncer_wi_binding" {
+  service_account_id = google_service_account.gmp_datasource_syncer_gsa.name
   role               = "roles/iam.workloadIdentityUser"
   members = [
-    "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/prom-ui-ksa]"
+    "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/${var.name}-gmp-datasource-syncer-ksa]"
   ]
 }
 
@@ -61,6 +67,26 @@ resource "google_service_account_iam_binding" "grafana_wi_binding" {
   service_account_id = google_service_account.grafana_gsa.name
   role               = "roles/iam.workloadIdentityUser"
   members = [
-    "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/grafana-ksa]"
+    "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/${var.name}-grafana-ksa]"
+  ]
+}
+
+resource "google_service_account" "rule_evaluator_gsa" {
+  account_id   = "${var.name}-gmp-rule-evaluator-sa"
+  display_name = "GSA for GMP Rule Evaluator"
+}
+
+# 1. IAM Binding to allow your cluster's Service Account to read GMP data
+resource "google_project_iam_member" "rule_evaluator_metric_viewer" {
+  project = var.project_id
+  role    = "roles/monitoring.viewer"
+  member  = "serviceAccount:${google_service_account.rule_evaluator_gsa.email}"
+}
+
+resource "google_service_account_iam_binding" "rule_evaluator_wi_binding" {
+  service_account_id = google_service_account.rule_evaluator_gsa.name
+  role               = "roles/iam.workloadIdentityUser"
+  members = [
+    "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_namespace_v1.observability_namespace.metadata[0].name}/${var.name}-gmp-rule-evaluator-ksa]"
   ]
 }

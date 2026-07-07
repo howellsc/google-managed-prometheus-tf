@@ -31,17 +31,17 @@ variable "region" {
   type        = string
 }
 
-variable "grafana_db_name" {
-  description = "Grafana Postgres DB Name"
-  type        = string
-}
-
-variable "grafana_db_password" {
-  description = "Grafana Postgres DB Password"
-  type        = string
-}
-
-variable "grafana_db_admin_password" {
-  description = "Grafana Postgres DB Admin Password"
-  type        = string
-}
+# variable "grafana_db_name" {
+#   description = "Grafana Postgres DB Name"
+#   type        = string
+# }
+#
+# variable "grafana_db_password" {
+#   description = "Grafana Postgres DB Password"
+#   type        = string
+# }
+#
+# variable "grafana_db_admin_password" {
+#   description = "Grafana Postgres DB Admin Password"
+#   type        = string
+# }
