@@ -44,8 +44,10 @@ module "gke" {
   vpc_name                          = module.vpc_network.vpc_name
   vpc_subnet_gke_name               = module.vpc_network.vpc_subnet_gke_name
   vpc_subnet_gke_secondary_ip_range = module.vpc_network.vpc_subnet_gke_secondary_ip_range
-  github_username                   = ""
-  github_pat                        = ""
+  git_username                      = ""
+  git_pat                           = ""
+  git_url                           = ""
+  git_ref                           = ""
   # grafana_db_name                   = module.cloud_sql.grafana_db_name
   # grafana_db_password               = module.cloud_sql.grafana_db_password
   # grafana_db_admin_password         = module.cloud_sql.grafana_db_admin_password

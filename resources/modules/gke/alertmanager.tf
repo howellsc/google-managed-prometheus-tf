@@ -319,30 +319,14 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
         container {
           name  = "${var.name}-git-sync"
           image = "registry.k8s.io/git-sync/git-sync:v4.2.4"
-          env {
-            name  = "GITSYNC_REPO"
-            value = "https://"
-          }
-          env {
-            name  = "GITSYNC_BRANCH"
-            value = "main"
-          }
-          env {
-            name  = "GITSYNC_ROOT"
-            value = "/git"
-          }
-          env {
-            name  = "GITSYNC_LINK"
-            value = "current"
-          }
-          env {
-            name  = "GITSYNC_PERIOD"
-            value = "30s"
-          }
-          env {
-            name  = "GITSYNC_ONE_TIME"
-            value = "false"
-          }
+          args = [
+            "--period=120s",
+            "--repo=${var.git_url}",
+            "--ref=${var.git_ref}",
+            "--root=/git",
+            "--link=rules",
+            "--one-time=false",
+          ]
           env {
             name = "GITSYNC_USERNAME"
             value_from {
@@ -395,7 +379,7 @@ resource "kubernetes_secret_v1" "gmp_git_sync_secret" {
 
   type = "Opaque"
   data = {
-    username = var.github_username
-    token    = var.github_pat
+    username = var.git_username
+    token    = var.git_pat
   }
 }

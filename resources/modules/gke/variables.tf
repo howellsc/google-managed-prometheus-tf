@@ -31,12 +31,21 @@ variable "region" {
   type        = string
 }
 
-variable "github_username" {
+variable "git_url" {
+  type = string
+}
+
+variable "git_ref" {
+  type = string
+}
+
+
+variable "git_username" {
   type      = string
   sensitive = true
 }
 
-variable "github_pat" {
+variable "git_pat" {
   type      = string
   sensitive = true
 }
