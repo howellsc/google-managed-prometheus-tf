@@ -89,9 +89,9 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
             "--config.file=/etc/alertmanager/alertmanager.yml",
             "--storage.path=/alertmanager",
             # 2. Point to the headless service DNS pattern to find cluster siblings
-            "--cluster.peer=alertmanager-0.alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094",
-            "--cluster.peer=alertmanager-1.alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094",
-            "--cluster.peer=alertmanager-2.alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094"
+            "--cluster.peer=dev-alertmanager-0.dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094",
+            "--cluster.peer=dev-alertmanager-1.dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094",
+            "--cluster.peer=dev-alertmanager-2.dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094"
           ]
 
           port {
@@ -110,7 +110,7 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
           }
 
           volume_mount {
-            name       = "alertmanager-storage"
+            name       = "${var.name}-alertmanager-storage"
             mount_path = "/alertmanager"
           }
 
@@ -196,45 +196,17 @@ global:
   evaluation_interval: 15s
 
 rule_files:
-  - /etc/rules/*.yaml
+  - /etc/rules/current/*.yaml
 
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
-            - alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9093
+            - dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9093
 EOF
   }
 }
 
-
-# ConfigMap containing your raw Prometheus rules file
-resource "kubernetes_config_map_v1" "gmp_rule_evaluator_rules" {
-  metadata {
-    name      = "${var.name}-rule-evaluator-rules"
-    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
-  }
-
-  data = {
-    "rules.yaml" = <<EOF
-groups:
-  - name: self-hosted-rules
-    rules:
-      - alert: HostHighCpuLoad
-        expr: instance:node_cpu_utilisation:rate5m > 0.90
-        for: 2m
-        labels:
-          severity: warning
-      - alert: TestAlert
-        expr: vector(1)
-        for: 30s
-        labels:
-          severity: warning
-          test: true
-          name: chris
-EOF
-  }
-}
 
 # 4. Standalone Rule Evaluator Deployment
 resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
@@ -264,7 +236,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
 
         container {
           name  = "${var.name}-evaluator"
-          image = "gke.gcr.io/prometheus-engine/rule-evaluator:v0.17.2-gke.2"
+          image = "gke.gcr.io/prometheus-engine/rule-evaluator:v0.18.1-gke.0"
 
           args = [
             "--query.project-id=${var.project_id}",
@@ -307,7 +279,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
 
           volume_mount {
             name       = "rules-volume"
-            mount_path = "/etc/rules"
+            mount_path = "/etc/rules/current"
           }
 
           volume_mount {
@@ -320,18 +292,18 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
           name  = "${var.name}-git-sync"
           image = "registry.k8s.io/git-sync/git-sync:v4.2.4"
           args = [
-            "--period=120s",
+            "--period=30s",
             "--repo=${var.git_url}",
             "--ref=${var.git_ref}",
             "--root=/git",
-            "--link=rules",
+            "--link=current",
             "--one-time=false",
           ]
           env {
             name = "GITSYNC_USERNAME"
             value_from {
               secret_key_ref {
-                name = "${var.name}-gmp-git-sync-secret"
+                name = kubernetes_secret_v1.gmp_git_sync_secret.metadata[0].name
                 key  = "username"
               }
             }
@@ -340,7 +312,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
             name = "GITSYNC_PASSWORD"
             value_from {
               secret_key_ref {
-                name = "${var.name}-gmp-git-sync-secret"
+                name = kubernetes_secret_v1.gmp_git_sync_secret.metadata[0].name
                 key  = "token"
               }
             }
@@ -354,9 +326,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
 
         volume {
           name = "rules-volume"
-          config_map {
-            name = kubernetes_config_map_v1.gmp_rule_evaluator_rules.metadata[0].name
-          }
+          empty_dir {}
         }
 
         volume {
