@@ -31,6 +31,16 @@ variable "region" {
   type        = string
 }
 
+variable "github_username" {
+  type      = string
+  sensitive = true
+}
+
+variable "github_pat" {
+  type      = string
+  sensitive = true
+}
+
 # variable "grafana_db_name" {
 #   description = "Grafana Postgres DB Name"
 #   type        = string

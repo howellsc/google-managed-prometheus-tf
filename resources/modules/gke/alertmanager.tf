@@ -127,7 +127,7 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
         }
 
         container {
-          name = "${var.name}-config-reloader"
+          name  = "${var.name}-config-reloader"
           image = "gke.gcr.io/prometheus-engine/config-reloader:v0.17.2-gke.2"
 
           args = [
@@ -295,7 +295,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
         }
 
         container {
-          name = "${var.name}-config-reloader"
+          name  = "${var.name}-config-reloader"
           image = "gke.gcr.io/prometheus-engine/config-reloader:v0.17.2-gke.2"
 
           args = [
@@ -316,6 +316,58 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
           }
         }
 
+        container {
+          name  = "${var.name}-git-sync"
+          image = "registry.k8s.io/git-sync/git-sync:v4.2.4"
+          env {
+            name  = "GITSYNC_REPO"
+            value = "https://"
+          }
+          env {
+            name  = "GITSYNC_BRANCH"
+            value = "main"
+          }
+          env {
+            name  = "GITSYNC_ROOT"
+            value = "/git"
+          }
+          env {
+            name  = "GITSYNC_LINK"
+            value = "current"
+          }
+          env {
+            name  = "GITSYNC_PERIOD"
+            value = "30s"
+          }
+          env {
+            name  = "GITSYNC_ONE_TIME"
+            value = "false"
+          }
+          env {
+            name = "GITSYNC_USERNAME"
+            value_from {
+              secret_key_ref {
+                name = "${var.name}-gmp-git-sync-secret"
+                key  = "username"
+              }
+            }
+          }
+          env {
+            name = "GITSYNC_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = "${var.name}-gmp-git-sync-secret"
+                key  = "token"
+              }
+            }
+          }
+
+          volume_mount {
+            name       = "rules-volume"
+            mount_path = "/git"
+          }
+        }
+
         volume {
           name = "rules-volume"
           config_map {
@@ -331,5 +383,19 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
         }
       }
     }
+  }
+}
+
+resource "kubernetes_secret_v1" "gmp_git_sync_secret" {
+
+  metadata {
+    name      = "${var.name}-gmp-git-sync-secret"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+
+  type = "Opaque"
+  data = {
+    username = var.github_username
+    token    = var.github_pat
   }
 }
