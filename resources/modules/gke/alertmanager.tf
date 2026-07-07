@@ -2,7 +2,7 @@
 resource "kubernetes_config_map_v1" "alertmanager_config" {
 
   metadata {
-    name      = "alertmanager-config"
+    name      = "${var.name}-alertmanager-config"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
 
@@ -27,16 +27,16 @@ EOF
 # 3. Headless Service for StatefulSet Sticky Network Identity
 resource "kubernetes_service_v1" "alertmanager_service" {
   metadata {
-    name      = "alertmanager"
+    name      = "${var.name}-alertmanager"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
     labels = {
-      app = "alertmanager"
+      app = "${var.name}-alertmanager"
     }
   }
 
   spec {
     selector = {
-      app = "alertmanager"
+      app = "${var.name}-alertmanager"
     }
 
     port {
@@ -59,7 +59,7 @@ resource "kubernetes_service_v1" "alertmanager_service" {
 # 4. Alertmanager StatefulSet Deployment
 resource "kubernetes_stateful_set_v1" "alertmanager" {
   metadata {
-    name      = "alertmanager"
+    name      = "${var.name}-alertmanager"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
 
@@ -69,20 +69,20 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
 
     selector {
       match_labels = {
-        app = "alertmanager"
+        app = "${var.name}-alertmanager"
       }
     }
 
     template {
       metadata {
         labels = {
-          app = "alertmanager"
+          app = "${var.name}-alertmanager"
         }
       }
 
       spec {
         container {
-          name  = "alertmanager"
+          name  = "${var.name}-alertmanager"
           image = "quay.io/prometheus/alertmanager:v0.27.0"
 
           args = [
@@ -155,7 +155,7 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
     # Dynamically spins up dedicated persistent cloud disks per Pod replica
     volume_claim_template {
       metadata {
-        name = "alertmanager-storage"
+        name = "${var.name}-alertmanager-storage"
       }
       spec {
         access_modes       = ["ReadWriteOnce"]
@@ -185,7 +185,7 @@ resource "kubernetes_service_account_v1" "gmp_rule_evaluator_ksa" {
 # 3. ConfigMap containing your raw Prometheus config
 resource "kubernetes_config_map_v1" "gmp_rule_evaluator_config" {
   metadata {
-    name      = "rule-evaluator-prometheus-yaml"
+    name      = "${var.name}-rule-evaluator-prometheus-yaml"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
 
@@ -211,7 +211,7 @@ EOF
 # ConfigMap containing your raw Prometheus rules file
 resource "kubernetes_config_map_v1" "gmp_rule_evaluator_rules" {
   metadata {
-    name      = "rule-evaluator-rules"
+    name      = "${var.name}-rule-evaluator-rules"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
 
@@ -239,7 +239,7 @@ EOF
 # 4. Standalone Rule Evaluator Deployment
 resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
   metadata {
-    name      = "gmp-rule-evaluator"
+    name      = "${var.name}-gmp-rule-evaluator"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
 
@@ -248,14 +248,14 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
 
     selector {
       match_labels = {
-        app = "gmp-rule-evaluator"
+        app = "${var.name}-gmp-rule-evaluator"
       }
     }
 
     template {
       metadata {
         labels = {
-          app = "gmp-rule-evaluator"
+          app = "${var.name}-gmp-rule-evaluator"
         }
       }
 
@@ -263,7 +263,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
         service_account_name = kubernetes_service_account_v1.gmp_rule_evaluator_ksa.metadata[0].name
 
         container {
-          name  = "evaluator"
+          name  = "${var.name}-evaluator"
           image = "gke.gcr.io/prometheus-engine/rule-evaluator:v0.17.2-gke.2"
 
           args = [
