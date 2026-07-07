@@ -148,7 +148,15 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
             name = kubernetes_config_map_v1.alertmanager_config.metadata[0].name
           }
         }
+
+        security_context {
+          run_as_group    = "65534"
+          run_as_user     = "65534"
+          run_as_non_root = true
+          fs_group        = "65534"
+        }
       }
+
 
     }
 
@@ -162,7 +170,7 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
         storage_class_name = "standard-rwo" # Adjust to match your cloud's block storage class (e.g., premium-rwo)
         resources {
           requests = {
-            storage = "16m"
+            storage = "1Gi"
           }
         }
       }
