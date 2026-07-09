@@ -1,3 +1,22 @@
+data "google_client_config" "default" {}
+
+provider "kubernetes" {
+  host                   = "https://${google_container_cluster.default.endpoint}"
+  token                  = data.google_client_config.default.access_token
+  cluster_ca_certificate = base64decode(google_container_cluster.default.master_auth[0].cluster_ca_certificate)
+
+  ignore_annotations = [
+    "^autopilot\\.gke\\.io\\/.*",
+    "^cloud\\.google\\.com\\/.*"
+  ]
+}
+
+resource "kubernetes_namespace_v1" "observability_namespace" {
+  metadata {
+    name = "${var.name}-observability"
+  }
+}
+
 resource "google_container_cluster" "default" {
   name = "${var.name}-cluster"
 
@@ -45,4 +64,11 @@ resource "google_container_cluster" "default" {
   # Set `deletion_protection` to `true` will ensure that one cannot
   # accidentally delete this instance by use of Terraform.
   deletion_protection = false
+}
+
+# Provide time for Service cleanup
+resource "time_sleep" "wait_service_cleanup" {
+  depends_on = [google_container_cluster.default]
+
+  destroy_duration = "180s"
 }

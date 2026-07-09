@@ -1,33 +1,3 @@
-data "google_client_config" "default" {}
-
-provider "kubernetes" {
-  host                   = "https://${google_container_cluster.default.endpoint}"
-  token                  = data.google_client_config.default.access_token
-  cluster_ca_certificate = base64decode(google_container_cluster.default.master_auth[0].cluster_ca_certificate)
-
-  ignore_annotations = [
-    "^autopilot\\.gke\\.io\\/.*",
-    "^cloud\\.google\\.com\\/.*"
-  ]
-}
-
-resource "kubernetes_namespace_v1" "observability_namespace" {
-  metadata {
-    name = "${var.name}-observability"
-  }
-}
-
-# -- Kubernetes Service Accounts (KSAs) --
-resource "kubernetes_service_account_v1" "otel_ksa" {
-  metadata {
-    name      = "${var.name}-otel-collector-ksa"
-    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
-    annotations = {
-      "iam.gke.io/gcp-service-account" = google_service_account.otel_gsa.email
-    }
-  }
-}
-
 resource "kubernetes_service_account_v1" "gmp_datasource_syncer_ksa" {
   metadata {
     name      = "${var.name}-gmp-datasource-syncer-ksa"
@@ -38,96 +8,12 @@ resource "kubernetes_service_account_v1" "gmp_datasource_syncer_ksa" {
   }
 }
 
-# -- OTel Collector Deployment & Config --
-resource "kubernetes_config_map_v1" "otel_config" {
+resource "kubernetes_service_account_v1" "grafana_ksa" {
   metadata {
-    name      = "${var.name}-otel-collector-config"
+    name      = "${var.name}-grafana-ksa"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
-  }
-  data = {
-    "config.yaml" = <<EOF
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: otelcol
-          scrape_interval: 30s
-          static_configs:
-            - targets: ["127.0.0.1:8888"]
-processors:
-  batch:
-    send_batch_size: 200
-    timeout: 5s
-  resourcedetection:
-    detectors: [env, gcp]
-    timeout: 2s
-    override: false
-exporters:
-  googlemanagedprometheus:
-    project: "${var.project_id}"
-service:
-
-  telemetry:
-    metrics:
-      readers:
-        - pull:
-            exporter:
-              prometheus:
-                host: '127.0.0.1'
-                port: 8888
-
-  pipelines:
-    metrics:
-      receivers: [otlp, prometheus]
-      processors: [resourcedetection, batch]
-      exporters: [googlemanagedprometheus]
-EOF
-  }
-}
-
-resource "kubernetes_deployment_v1" "otel_collector" {
-  metadata {
-    name      = "${var.name}-otel-collector"
-    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
-  }
-  spec {
-    replicas = 1
-    selector {
-      match_labels = {
-        app = "otel-collector"
-      }
-    }
-    template {
-      metadata {
-        labels = {
-          app = "otel-collector"
-        }
-      }
-      spec {
-        service_account_name = kubernetes_service_account_v1.otel_ksa.metadata[0].name
-        container {
-          name = "otel-collector"
-          # Contrib image is required as it contains the googlemanagedprometheus exporter
-          image = "otel/opentelemetry-collector-contrib:latest"
-          args  = ["--config=/etc/otelcol-contrib/config.yaml"]
-          volume_mount {
-            name       = "config-volume"
-            mount_path = "/etc/otelcol-contrib"
-          }
-        }
-        volume {
-          name = "config-volume"
-          config_map {
-            name = kubernetes_config_map_v1.otel_config.metadata[0].name
-          }
-        }
-      }
+    annotations = {
+      "iam.gke.io/gcp-service-account" = google_service_account.grafana_gsa.email
     }
   }
 }
@@ -202,16 +88,6 @@ resource "kubernetes_cron_job_v1" "prometheus_gmp_datasource_syncer" {
       }
     }
 
-  }
-}
-
-resource "kubernetes_service_account_v1" "grafana_ksa" {
-  metadata {
-    name      = "${var.name}-grafana-ksa"
-    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
-    annotations = {
-      "iam.gke.io/gcp-service-account" = google_service_account.grafana_gsa.email
-    }
   }
 }
 
@@ -405,11 +281,3 @@ resource "kubernetes_service_v1" "grafana_service" {
 #   #   google_sql_user.postgres_admin
 #   # ]
 # }
-
-
-# Provide time for Service cleanup
-resource "time_sleep" "wait_service_cleanup" {
-  depends_on = [google_container_cluster.default]
-
-  destroy_duration = "180s"
-}
