@@ -24,6 +24,16 @@
 #   }
 # }
 
+resource "kubernetes_service_account_v1" "gmp_rule_evaluator_ksa" {
+  metadata {
+    name      = "${var.name}-gmp-rule-evaluator-ksa"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+    annotations = {
+      "iam.gke.io/gcp-service-account" = google_service_account.rule_evaluator_gsa.email
+    }
+  }
+}
+
 # 3. Headless Service for StatefulSet Sticky Network Identity
 resource "kubernetes_service_v1" "alertmanager_service" {
   metadata {
@@ -211,18 +221,6 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
     }
   }
 }
-
-# 2. Kubernetes Service Account with Workload Identity Annotation
-resource "kubernetes_service_account_v1" "gmp_rule_evaluator_ksa" {
-  metadata {
-    name      = "${var.name}-gmp-rule-evaluator-ksa"
-    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
-    annotations = {
-      "iam.gke.io/gcp-service-account" = google_service_account.rule_evaluator_gsa.email
-    }
-  }
-}
-
 
 # # 3. ConfigMap containing your raw Prometheus config
 # resource "kubernetes_config_map_v1" "gmp_rule_evaluator_config" {
