@@ -1,5 +1,7 @@
 locals {
   state_bucket_region = var.region
+  gitlab_username     = "howellsc"
+  gitlab_pat          = ""
 }
 
 provider "google" {
@@ -44,15 +46,18 @@ module "gke" {
   vpc_name                          = module.vpc_network.vpc_name
   vpc_subnet_gke_name               = module.vpc_network.vpc_subnet_gke_name
   vpc_subnet_gke_secondary_ip_range = module.vpc_network.vpc_subnet_gke_secondary_ip_range
-  git_prometheus_rules_username     = "howellsc"
-  git_prometheus_rules_pat          = ""
+  git_prometheus_rules_username     = local.gitlab_username
+  git_prometheus_rules_pat          = local.gitlab_pat
   git_prometheus_rules_url          = "https://github.com/howellsc/prometheus-rules.git"
   git_prometheus_rules_ref          = "main"
-  git_prometheus_config_username    = "howellsc"
-  git_prometheus_config_pat         = ""
+  git_prometheus_config_username    = local.gitlab_username
+  git_prometheus_config_pat         = local.gitlab_pat
   git_prometheus_config_url         = "https://github.com/howellsc/prometheus-config.git"
   git_prometheus_config_ref         = "main"
-
+  git_alertmanager_config_username  = local.gitlab_username
+  git_alertmanager_config_pat       = local.gitlab_pat
+  git_alertmanager_config_url       = "https://github.com/howellsc/alertmanager-config.git"
+  git_alertmanager_config_ref       = "main"
   # grafana_db_name                   = module.cloud_sql.grafana_db_name
   # grafana_db_password               = module.cloud_sql.grafana_db_password
   # grafana_db_admin_password         = module.cloud_sql.grafana_db_admin_password

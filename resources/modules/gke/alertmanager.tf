@@ -1,28 +1,28 @@
 # 2. Alertmanager Routing and Receiver Configuration
-resource "kubernetes_config_map_v1" "alertmanager_config" {
-
-  metadata {
-    name      = "${var.name}-alertmanager-config"
-    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
-  }
-
-  data = {
-    "alertmanager.yml" = <<EOF
-global:
-  resolve_timeout: 5m
-
-route:
-  group_by: ['alertname']
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 12h
-  receiver: 'default'
-
-receivers:
-- name: 'default'
-EOF
-  }
-}
+# resource "kubernetes_config_map_v1" "alertmanager_config" {
+#
+#   metadata {
+#     name      = "${var.name}-alertmanager-config"
+#     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+#   }
+#
+#   data = {
+#     "alertmanager.yml" = <<EOF
+# global:
+#   resolve_timeout: 5m
+#
+# route:
+#   group_by: ['alertname']
+#   group_wait: 30s
+#   group_interval: 5m
+#   repeat_interval: 12h
+#   receiver: 'default'
+#
+# receivers:
+# - name: 'default'
+# EOF
+#   }
+# }
 
 # 3. Headless Service for StatefulSet Sticky Network Identity
 resource "kubernetes_service_v1" "alertmanager_service" {
@@ -86,7 +86,7 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
           image = "quay.io/prometheus/alertmanager:v0.27.0"
 
           args = [
-            "--config.file=/etc/alertmanager/alertmanager.yml",
+            "--config.file=/etc/alertmanager/current/alertmanager.yml",
             "--storage.path=/alertmanager",
             # 2. Point to the headless service DNS pattern to find cluster siblings
             "--cluster.peer=dev-alertmanager-0.dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094",
@@ -131,7 +131,7 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
           image = "gke.gcr.io/prometheus-engine/config-reloader:v0.17.2-gke.2"
 
           args = [
-            "-watched-dir=/etc/alertmanager",
+            "-watched-dir=/etc/alertmanager/current",
             "-reload-url=http://127.0.0.1:9093/-/reload",
             "-ready-url=http://127.0.0.1:9093/-/ready"
           ]
@@ -142,11 +142,45 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
           }
         }
 
+        container {
+          name  = "${var.name}-git-prometheus-config-sync"
+          image = "registry.k8s.io/git-sync/git-sync:v4.2.4"
+          args = [
+            "--period=30s",
+            "--repo=${var.git_alertmanager_config_url}",
+            "--ref=${var.git_alertmanager_config_ref}",
+            "--root=/git",
+            "--link=current",
+            "--one-time=false",
+          ]
+          env {
+            name = "GITSYNC_USERNAME"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.gmp_git_alertmanager_config_sync_secret.metadata[0].name
+                key  = "username"
+              }
+            }
+          }
+          env {
+            name = "GITSYNC_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.gmp_git_alertmanager_config_sync_secret.metadata[0].name
+                key  = "token"
+              }
+            }
+          }
+
+          volume_mount {
+            name       = "config-volume"
+            mount_path = "/git"
+          }
+        }
+
         volume {
           name = "config-volume"
-          config_map {
-            name = kubernetes_config_map_v1.alertmanager_config.metadata[0].name
-          }
+          empty_dir {}
         }
 
         security_context {
@@ -336,7 +370,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
           name  = "${var.name}-git-prometheus-config-sync"
           image = "registry.k8s.io/git-sync/git-sync:v4.2.4"
           args = [
-            "--period=30s",
+            "--period=120s",
             "--repo=${var.git_prometheus_config_url}",
             "--ref=${var.git_prometheus_config_ref}",
             "--root=/git",
@@ -408,5 +442,19 @@ resource "kubernetes_secret_v1" "gmp_git_prometheus_config_sync_secret" {
   data = {
     username = var.git_prometheus_config_username
     token    = var.git_prometheus_config_pat
+  }
+}
+
+resource "kubernetes_secret_v1" "gmp_git_alertmanager_config_sync_secret" {
+
+  metadata {
+    name      = "${var.name}-gmp-git-alertmanager-config-sync-secret"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+
+  type = "Opaque"
+  data = {
+    username = var.git_alertmanager_config_username
+    token    = var.git_alertmanager_config_pat
   }
 }
