@@ -31,21 +31,39 @@ variable "region" {
   type        = string
 }
 
-variable "git_url" {
+variable "git_prometheus_rules_url" {
   type = string
 }
 
-variable "git_ref" {
+variable "git_prometheus_rules_ref" {
   type = string
 }
 
 
-variable "git_username" {
+variable "git_prometheus_rules_username" {
   type      = string
   sensitive = true
 }
 
-variable "git_pat" {
+variable "git_prometheus_rules_pat" {
+  type      = string
+  sensitive = true
+}
+
+variable "git_prometheus_config_url" {
+  type = string
+}
+
+variable "git_prometheus_config_ref" {
+  type = string
+}
+
+variable "git_prometheus_config_username" {
+  type      = string
+  sensitive = true
+}
+
+variable "git_prometheus_config_pat" {
   type      = string
   sensitive = true
 }

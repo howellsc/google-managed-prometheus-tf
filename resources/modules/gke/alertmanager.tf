@@ -190,30 +190,30 @@ resource "kubernetes_service_account_v1" "gmp_rule_evaluator_ksa" {
 }
 
 
-# 3. ConfigMap containing your raw Prometheus config
-resource "kubernetes_config_map_v1" "gmp_rule_evaluator_config" {
-  metadata {
-    name      = "${var.name}-rule-evaluator-prometheus-yaml"
-    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
-  }
-
-  data = {
-    "prometheus.yaml" = <<EOF
-global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
-
-rule_files:
-  - /etc/rules/current/*.yaml
-
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-            - dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9093
-EOF
-  }
-}
+# # 3. ConfigMap containing your raw Prometheus config
+# resource "kubernetes_config_map_v1" "gmp_rule_evaluator_config" {
+#   metadata {
+#     name      = "${var.name}-rule-evaluator-prometheus-yaml"
+#     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+#   }
+#
+#   data = {
+#     "prometheus.yaml" = <<EOF
+# global:
+#   scrape_interval: 15s
+#   evaluation_interval: 15s
+#
+# rule_files:
+#   - /etc/rules/current/*.yaml
+#
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#             - dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9093
+# EOF
+#   }
+# }
 
 
 # 4. Standalone Rule Evaluator Deployment
@@ -248,8 +248,8 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
 
           args = [
             "--query.project-id=${var.project_id}",
-            "--config.file=/etc/config/prometheus.yaml",
-            "--log.level=debug"
+            "--config.file=/etc/config/current/prometheus.yaml",
+            "--log.level=info"
           ]
 
           volume_mount {
@@ -279,15 +279,15 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
           image = "gke.gcr.io/prometheus-engine/config-reloader:v0.17.2-gke.2"
 
           args = [
-            "-watched-dir=/etc/rules",
-            # "-config-dir=/etc/config/prometheus.yaml",
+            "-watched-dir=/etc/rules/current",
+            "-watched-dir=/etc/config/current",
             "-reload-url=http://127.0.0.1:9091/-/reload",
             "-ready-url=http://127.0.0.1:9091/-/ready"
           ]
 
           volume_mount {
             name       = "rules-volume"
-            mount_path = "/etc/rules/current"
+            mount_path = "/etc/rules"
           }
 
           volume_mount {
@@ -297,12 +297,12 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
         }
 
         container {
-          name  = "${var.name}-git-sync"
+          name  = "${var.name}-git-prometheus-rule-sync"
           image = "registry.k8s.io/git-sync/git-sync:v4.2.4"
           args = [
             "--period=30s",
-            "--repo=${var.git_url}",
-            "--ref=${var.git_ref}",
+            "--repo=${var.git_prometheus_rules_url}",
+            "--ref=${var.git_prometheus_rules_ref}",
             "--root=/git",
             "--link=current",
             "--one-time=false",
@@ -311,7 +311,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
             name = "GITSYNC_USERNAME"
             value_from {
               secret_key_ref {
-                name = kubernetes_secret_v1.gmp_git_sync_secret.metadata[0].name
+                name = kubernetes_secret_v1.gmp_git_prometheus_rule_sync_secret.metadata[0].name
                 key  = "username"
               }
             }
@@ -320,7 +320,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
             name = "GITSYNC_PASSWORD"
             value_from {
               secret_key_ref {
-                name = kubernetes_secret_v1.gmp_git_sync_secret.metadata[0].name
+                name = kubernetes_secret_v1.gmp_git_prometheus_rule_sync_secret.metadata[0].name
                 key  = "token"
               }
             }
@@ -332,6 +332,42 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
           }
         }
 
+        container {
+          name  = "${var.name}-git-prometheus-config-sync"
+          image = "registry.k8s.io/git-sync/git-sync:v4.2.4"
+          args = [
+            "--period=30s",
+            "--repo=${var.git_prometheus_config_url}",
+            "--ref=${var.git_prometheus_config_ref}",
+            "--root=/git",
+            "--link=current",
+            "--one-time=false",
+          ]
+          env {
+            name = "GITSYNC_USERNAME"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.gmp_git_prometheus_config_sync_secret.metadata[0].name
+                key  = "username"
+              }
+            }
+          }
+          env {
+            name = "GITSYNC_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.gmp_git_prometheus_config_sync_secret.metadata[0].name
+                key  = "token"
+              }
+            }
+          }
+
+          volume_mount {
+            name       = "config-volume"
+            mount_path = "/git"
+          }
+        }
+
         volume {
           name = "rules-volume"
           empty_dir {}
@@ -339,25 +375,38 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
 
         volume {
           name = "config-volume"
-          config_map {
-            name = kubernetes_config_map_v1.gmp_rule_evaluator_config.metadata[0].name
-          }
+          empty_dir {}
         }
       }
     }
   }
 }
 
-resource "kubernetes_secret_v1" "gmp_git_sync_secret" {
+resource "kubernetes_secret_v1" "gmp_git_prometheus_rule_sync_secret" {
 
   metadata {
-    name      = "${var.name}-gmp-git-sync-secret"
+    name      = "${var.name}-gmp-git-prometheus-rule-sync-secret"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
   }
 
   type = "Opaque"
   data = {
-    username = var.git_username
-    token    = var.git_pat
+    username = var.git_prometheus_rules_username
+    token    = var.git_prometheus_rules_pat
+  }
+}
+
+
+resource "kubernetes_secret_v1" "gmp_git_prometheus_config_sync_secret" {
+
+  metadata {
+    name      = "${var.name}-gmp-git-prometheus-config-sync-secret"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+
+  type = "Opaque"
+  data = {
+    username = var.git_prometheus_config_username
+    token    = var.git_prometheus_config_pat
   }
 }
