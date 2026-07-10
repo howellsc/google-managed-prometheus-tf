@@ -70,19 +70,19 @@ resource "kubernetes_deployment_v1" "otel_collector" {
     replicas = 1
     selector {
       match_labels = {
-        app = "otel-collector"
+        app = "${var.name}-otel-collector"
       }
     }
     template {
       metadata {
         labels = {
-          app = "otel-collector"
+          app = "${var.name}-otel-collector"
         }
       }
       spec {
         service_account_name = kubernetes_service_account_v1.otel_ksa.metadata[0].name
         container {
-          name = "otel-collector"
+          name = "${var.name}-otel-collector"
           # Contrib image is required as it contains the googlemanagedprometheus exporter
           image = "otel/opentelemetry-collector-contrib:latest"
           args  = ["--config=/etc/otelcol-contrib/config.yaml"]

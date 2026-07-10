@@ -160,6 +160,25 @@ resource "kubernetes_deployment_v1" "grafana" {
         #     run_as_non_root = true
         #   }
         # }
+
+        container {
+          name = "${var.name}-grafana-otel-collector"
+          # Contrib image is required as it contains the googlemanagedprometheus exporter
+          image = "otel/opentelemetry-collector-contrib:latest"
+          args  = ["--config=/etc/otelcol-contrib/config.yaml"]
+
+          volume_mount {
+            name       = "grafana-otel-collector-config-volume"
+            mount_path = "/etc/otelcol-contrib"
+          }
+        }
+
+        volume {
+          name = "grafana-otel-collector-config-volume"
+          config_map {
+            name = kubernetes_config_map_v1.grafana_otel_config.metadata[0].name
+          }
+        }
       }
     }
   }
@@ -182,6 +201,57 @@ resource "kubernetes_service_v1" "grafana_service" {
   }
 
   depends_on = [time_sleep.wait_service_cleanup]
+}
+
+resource "kubernetes_config_map_v1" "grafana_otel_config" {
+  metadata {
+    name      = "${var.name}-grafana-otel-collector-config"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+  data = {
+    "config.yaml" = <<EOF
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otelcol
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["127.0.0.1:8888"]
+        - job_name: grafana
+          scrape_interval: 30s
+          metrics_path: /metrics
+          static_configs:
+            - targets: ["127.0.0.1:3000"]
+processors:
+  batch:
+    send_batch_size: 200
+    timeout: 5s
+  resourcedetection:
+    detectors: [gcp,env]
+    timeout: 2s
+    override: false
+exporters:
+  googlemanagedprometheus:
+    project: "${var.project_id}"
+service:
+
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '127.0.0.1'
+                port: 8888
+
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [resourcedetection, batch]
+      exporters: [googlemanagedprometheus]
+EOF
+  }
 }
 
 # Store the generated DB password securely in K8s

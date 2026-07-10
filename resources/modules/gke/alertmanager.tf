@@ -23,6 +23,12 @@
 # EOF
 #   }
 # }
+locals {
+  alertmanager_web_port       = 9093
+  alertmanager_mesh_port      = 9094
+  gmp_rule_evaluator_web_port = 9091
+}
+
 
 resource "kubernetes_service_account_v1" "gmp_rule_evaluator_ksa" {
   metadata {
@@ -51,14 +57,14 @@ resource "kubernetes_service_v1" "alertmanager_service" {
 
     port {
       name        = "web"
-      port        = 9093
-      target_port = 9093
+      port        = local.alertmanager_web_port
+      target_port = local.alertmanager_web_port
     }
 
     port {
       name        = "mesh"
-      port        = 9094
-      target_port = 9094
+      port        = local.alertmanager_mesh_port
+      target_port = local.alertmanager_mesh_port
     }
 
     # "None" defines it as headless, creating direct DNS paths for each pod instance
@@ -91,6 +97,9 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
       }
 
       spec {
+
+        service_account_name = kubernetes_service_account_v1.gmp_rule_evaluator_ksa.metadata[0].name
+
         container {
           name  = "${var.name}-alertmanager"
           image = "quay.io/prometheus/alertmanager:v0.27.0"
@@ -99,19 +108,19 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
             "--config.file=/etc/alertmanager/current/alertmanager.yml",
             "--storage.path=/alertmanager",
             # 2. Point to the headless service DNS pattern to find cluster siblings
-            "--cluster.peer=dev-alertmanager-0.dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094",
-            "--cluster.peer=dev-alertmanager-1.dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094",
-            "--cluster.peer=dev-alertmanager-2.dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9094"
+            "--cluster.peer=${var.name}-alertmanager-0.${kubernetes_service_v1.alertmanager_service.metadata[0].name}.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:${local.alertmanager_mesh_port}",
+            "--cluster.peer=${var.name}-alertmanager-1.${kubernetes_service_v1.alertmanager_service.metadata[0].name}.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:${local.alertmanager_mesh_port}",
+            "--cluster.peer=${var.name}-alertmanager-2.${kubernetes_service_v1.alertmanager_service.metadata[0].name}.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:${local.alertmanager_mesh_port}"
           ]
 
           port {
             name           = "web"
-            container_port = 9093
+            container_port = local.alertmanager_web_port
           }
 
           port {
             name           = "mesh"
-            container_port = 9094
+            container_port = local.alertmanager_mesh_port
           }
 
           volume_mount {
@@ -142,8 +151,8 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
 
           args = [
             "-watched-dir=/etc/alertmanager/current",
-            "-reload-url=http://127.0.0.1:9093/-/reload",
-            "-ready-url=http://127.0.0.1:9093/-/ready"
+            "-reload-url=http://127.0.0.1:${local.alertmanager_web_port}/-/reload",
+            "-ready-url=http://127.0.0.1:${local.alertmanager_web_port}/-/ready"
           ]
 
           volume_mount {
@@ -188,9 +197,45 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
           }
         }
 
+        container {
+          name = "${var.name}-alertmanager-otel-collector"
+          # Contrib image is required as it contains the googlemanagedprometheus exporter
+          image = "otel/opentelemetry-collector-contrib:latest"
+          args  = ["--config=/etc/otelcol-contrib/config.yaml"]
+
+          volume_mount {
+            name       = "alertmanager-otel-collector-config-volume"
+            mount_path = "/etc/otelcol-contrib"
+          }
+
+          env {
+            name = "K8S_POD_NAME"
+            value_from {
+              field_ref {
+                field_path = "metadata.name"
+              }
+            }
+          }
+          env {
+            name = "K8S_NAMESPACE"
+            value_from {
+              field_ref {
+                field_path = "metadata.namespace"
+              }
+            }
+          }
+        }
+
         volume {
           name = "config-volume"
           empty_dir {}
+        }
+
+        volume {
+          name = "alertmanager-otel-collector-config-volume"
+          config_map {
+            name = kubernetes_config_map_v1.alertmanager_otel_config.metadata[0].name
+          }
         }
 
         security_context {
@@ -272,6 +317,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
       }
 
       spec {
+
         service_account_name = kubernetes_service_account_v1.gmp_rule_evaluator_ksa.metadata[0].name
 
         container {
@@ -281,7 +327,7 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
           args = [
             "--query.project-id=${var.project_id}",
             "--config.file=/etc/config/current/prometheus.yaml",
-            "--log.level=info"
+            "--log.level=debug"
           ]
 
           volume_mount {
@@ -313,8 +359,8 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
           args = [
             "-watched-dir=/etc/rules/current",
             "-watched-dir=/etc/config/current",
-            "-reload-url=http://127.0.0.1:9091/-/reload",
-            "-ready-url=http://127.0.0.1:9091/-/ready"
+            "-reload-url=http://127.0.0.1:${local.gmp_rule_evaluator_web_port}/-/reload",
+            "-ready-url=http://127.0.0.1:${local.gmp_rule_evaluator_web_port}/-/ready"
           ]
 
           volume_mount {
@@ -400,6 +446,25 @@ resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
           }
         }
 
+        container {
+          name = "${var.name}-gmp-rule-evaluator-otel-collector"
+          # Contrib image is required as it contains the googlemanagedprometheus exporter
+          image = "otel/opentelemetry-collector-contrib:latest"
+          args  = ["--config=/etc/otelcol-contrib/config.yaml"]
+
+          volume_mount {
+            name       = "gmp-rule-evaluator-otel-collector-config-volume"
+            mount_path = "/etc/otelcol-contrib"
+          }
+        }
+
+        volume {
+          name = "gmp-rule-evaluator-otel-collector-config-volume"
+          config_map {
+            name = kubernetes_config_map_v1.gmp_rule_evaluator_otel_config.metadata[0].name
+          }
+        }
+
         volume {
           name = "rules-volume"
           empty_dir {}
@@ -454,5 +519,113 @@ resource "kubernetes_secret_v1" "gmp_git_alertmanager_config_sync_secret" {
   data = {
     username = var.git_alertmanager_config_username
     token    = var.git_alertmanager_config_pat
+  }
+}
+
+resource "kubernetes_config_map_v1" "alertmanager_otel_config" {
+  metadata {
+    name      = "${var.name}-alertmanager-otel-collector-config"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+  data = {
+    "config.yaml" = <<EOF
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otelcol
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["127.0.0.1:8888"]
+        - job_name: alertmanager
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["127.0.0.1:${local.alertmanager_web_port}"]
+processors:
+  batch:
+    send_batch_size: 200
+    timeout: 5s
+  resource:
+    attributes:
+      - key: k8s.pod.name
+        value: "$${env:K8S_POD_NAME}"
+        action: upsert
+      - key: k8s.namespace.name
+        value: "$${env:K8S_NAMESPACE}"
+        action: upsert
+  resourcedetection:
+    detectors: [gcp,env]
+    timeout: 2s
+    override: false
+exporters:
+  googlemanagedprometheus:
+    project: "${var.project_id}"
+service:
+
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '127.0.0.1'
+                port: 8888
+
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [resourcedetection, resource, batch]
+      exporters: [googlemanagedprometheus]
+EOF
+  }
+}
+
+resource "kubernetes_config_map_v1" "gmp_rule_evaluator_otel_config" {
+  metadata {
+    name      = "${var.name}-gmp-rule-evaluator-otel-collector-config"
+    namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
+  }
+  data = {
+    "config.yaml" = <<EOF
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otelcol
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["127.0.0.1:8888"]
+        - job_name: gmp-rule-evaluator
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["127.0.0.1:${local.gmp_rule_evaluator_web_port}"]
+processors:
+  batch:
+    send_batch_size: 200
+    timeout: 5s
+  resourcedetection:
+    detectors: [gcp,env]
+    timeout: 2s
+    override: false
+exporters:
+  googlemanagedprometheus:
+    project: "${var.project_id}"
+service:
+
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '127.0.0.1'
+                port: 8888
+
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [resourcedetection, batch]
+      exporters: [googlemanagedprometheus]
+EOF
   }
 }

@@ -63,6 +63,13 @@ resource "google_project_iam_member" "grafana_metric_viewer" {
   member  = "serviceAccount:${google_service_account.grafana_gsa.email}"
 }
 
+# Grant access to Google Managed Prometheus (so Otel can send metrics)
+resource "google_project_iam_member" "grafana_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.grafana_gsa.email}"
+}
+
 resource "google_service_account_iam_binding" "grafana_wi_binding" {
   service_account_id = google_service_account.grafana_gsa.name
   role               = "roles/iam.workloadIdentityUser"
