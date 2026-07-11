@@ -1,28 +1,3 @@
-# 2. Alertmanager Routing and Receiver Configuration
-# resource "kubernetes_config_map_v1" "alertmanager_config" {
-#
-#   metadata {
-#     name      = "${var.name}-alertmanager-config"
-#     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
-#   }
-#
-#   data = {
-#     "alertmanager.yml" = <<EOF
-# global:
-#   resolve_timeout: 5m
-#
-# route:
-#   group_by: ['alertname']
-#   group_wait: 30s
-#   group_interval: 5m
-#   repeat_interval: 12h
-#   receiver: 'default'
-#
-# receivers:
-# - name: 'default'
-# EOF
-#   }
-# }
 locals {
   alertmanager_web_port       = 9093
   alertmanager_mesh_port      = 9094
@@ -266,32 +241,6 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
     }
   }
 }
-
-# # 3. ConfigMap containing your raw Prometheus config
-# resource "kubernetes_config_map_v1" "gmp_rule_evaluator_config" {
-#   metadata {
-#     name      = "${var.name}-rule-evaluator-prometheus-yaml"
-#     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
-#   }
-#
-#   data = {
-#     "prometheus.yaml" = <<EOF
-# global:
-#   scrape_interval: 15s
-#   evaluation_interval: 15s
-#
-# rule_files:
-#   - /etc/rules/current/*.yaml
-#
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets:
-#             - dev-alertmanager.${kubernetes_namespace_v1.observability_namespace.metadata[0].name}.svc.cluster.local:9093
-# EOF
-#   }
-# }
-
 
 # 4. Standalone Rule Evaluator Deployment
 resource "kubernetes_deployment_v1" "gmp_rule_evaluator" {
@@ -560,6 +509,13 @@ processors:
 exporters:
   googlemanagedprometheus:
     project: "${var.project_id}"
+    metric:
+      resource_filters:
+        - prefix: "k8s."        # Passes through k8s.pod.name, k8s.namespace.name, etc.
+        # - prefix: "custom."     # Passes through any internal tag prefixes you track
+        # - regex: ".*"           # ALternatively: Pass through everything (high cardinality warning!)
+  debug:
+    verbosity: detailed
 service:
 
   telemetry:
