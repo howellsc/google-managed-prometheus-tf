@@ -184,21 +184,21 @@ resource "kubernetes_stateful_set_v1" "alertmanager" {
           }
 
           env {
-            name = "K8S_POD_NAME"
+            name = "SERVICE_INSTANCE"
             value_from {
               field_ref {
                 field_path = "metadata.name"
               }
             }
           }
-          env {
-            name = "K8S_NAMESPACE"
-            value_from {
-              field_ref {
-                field_path = "metadata.namespace"
-              }
-            }
-          }
+          # env {
+          #   name = "K8S_NAMESPACE"
+          #   value_from {
+          #     field_ref {
+          #       field_path = "metadata.namespace"
+          #     }
+          #   }
+          # }
         }
 
         volume {
@@ -490,18 +490,20 @@ receivers:
           scrape_interval: 30s
           static_configs:
             - targets: ["127.0.0.1:${local.alertmanager_web_port}"]
+              labels:
+                instance: $${env:SERVICE_INSTANCE}
 processors:
   batch:
     send_batch_size: 200
     timeout: 5s
-  resource:
-    attributes:
-      - key: k8s.pod.name
-        value: "$${env:K8S_POD_NAME}"
-        action: upsert
-      - key: k8s.namespace.name
-        value: "$${env:K8S_NAMESPACE}"
-        action: upsert
+  # resource:
+  #   attributes:
+  #     - key: k8s.pod.name
+  #       value: "$${env:K8S_POD_NAME}"
+  #       action: upsert
+  #     - key: k8s.namespace.name
+  #       value: "$${env:K8S_NAMESPACE}"
+  #       action: upsert
   resourcedetection:
     detectors: [gcp,env]
     timeout: 2s
@@ -509,9 +511,9 @@ processors:
 exporters:
   googlemanagedprometheus:
     project: "${var.project_id}"
-    metric:
-      resource_filters:
-        - prefix: "k8s."        # Passes through k8s.pod.name, k8s.namespace.name, etc.
+    # metric:
+    #   resource_filters:
+    #     - prefix: "k8s."        # Passes through k8s.pod.name, k8s.namespace.name, etc.
         # - prefix: "custom."     # Passes through any internal tag prefixes you track
         # - regex: ".*"           # ALternatively: Pass through everything (high cardinality warning!)
   debug:
@@ -530,7 +532,7 @@ service:
   pipelines:
     metrics:
       receivers: [prometheus]
-      processors: [resourcedetection, resource, batch]
+      processors: [resourcedetection, batch]
       exporters: [googlemanagedprometheus]
 EOF
   }
