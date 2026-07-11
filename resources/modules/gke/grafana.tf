@@ -171,6 +171,15 @@ resource "kubernetes_deployment_v1" "grafana" {
             name       = "grafana-otel-collector-config-volume"
             mount_path = "/etc/otelcol-contrib"
           }
+
+          env {
+            name = "SERVICE_INSTANCE"
+            value_from {
+              field_ref {
+                field_path = "metadata.name"
+              }
+            }
+          }
         }
 
         volume {
@@ -223,6 +232,8 @@ receivers:
           metrics_path: /metrics
           static_configs:
             - targets: ["127.0.0.1:3000"]
+              labels:
+                instance: $${env:SERVICE_INSTANCE}
 processors:
   batch:
     send_batch_size: 200
