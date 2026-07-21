@@ -1,5 +1,5 @@
 # 1. Karma ConfigMap
-resource "kubernetes_config_map" "karma_config" {
+resource "kubernetes_config_map_v1" "karma_config" {
   metadata {
     name      = "${var.name}-karma-config"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
@@ -14,9 +14,17 @@ alertmanager:
       uri: http://${var.name}-alertmanager.${var.name}-observability.svc.cluster.local:9093
       proxy: true
       timeout: 10s
+      healthcheck:
+        filters:
+          prometheus:
+            - alertname=DeadMansSwitch
 labels:
   strip:
     - prometheus
+history:
+  rewrite:
+    - source: '(.*)'
+      uri: 'http://127.0.0.1:9090'
 EOF
   }
 }
@@ -48,6 +56,7 @@ resource "kubernetes_deployment" "karma" {
       }
 
       spec {
+        service_account_name = kubernetes_service_account_v1.grafana_ksa.metadata[0].name
         container {
           name  = "${var.name}-karma"
           image = "lmierzwa/karma"
@@ -98,10 +107,54 @@ resource "kubernetes_deployment" "karma" {
           }
         }
 
+        container {
+          name  = "${var.name}-frontend"
+          image = "gke.gcr.io/prometheus-engine/frontend:v0.17.4-gke.1"
+
+          args = [
+            "--web.listen-address=:9090",
+            "--query.project-id=${var.project_id}"
+          ]
+
+          port {
+            name           = "web"
+            container_port = 9090
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/-/ready"
+              port = 9090
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 10
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/-/healthy"
+              port = 9090
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 15
+          }
+
+          resources {
+            limits = {
+              cpu    = "250m"
+              memory = "512Mi"
+            }
+            requests = {
+              cpu    = "100m"
+              memory = "128Mi"
+            }
+          }
+        }
+
         volume {
           name = "config"
           config_map {
-            name = kubernetes_config_map.karma_config.metadata[0].name
+            name = kubernetes_config_map_v1.karma_config.metadata[0].name
           }
         }
       }
