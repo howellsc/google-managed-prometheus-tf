@@ -30,7 +30,7 @@ EOF
 }
 
 # 2. Karma Deployment
-resource "kubernetes_deployment" "karma" {
+resource "kubernetes_deployment_v1" "karma" {
   metadata {
     name      = "${var.name}-karma"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
@@ -163,7 +163,7 @@ resource "kubernetes_deployment" "karma" {
 }
 
 # 3. Karma Service
-resource "kubernetes_service" "karma" {
+resource "kubernetes_service_v1" "karma" {
   metadata {
     name      = "${var.name}-karma"
     namespace = kubernetes_namespace_v1.observability_namespace.metadata[0].name
