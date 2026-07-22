@@ -21,3 +21,8 @@ variable "name" {
   type        = string
   default     = "dev"
 }
+
+variable "gitlab_pat" {
+  description = "Gitlab PAT"
+  type        = string
+}
